@@ -88,14 +88,14 @@ class Command:
             str: A string representation of the command details.
         """
         result = ''
-        result += f'ID: {self.id}\n'
-        result += f'Command: {self.command}\n'
+        result += f'\x1b[1mID:\x1b[0m {self.id}\n'
+        result += f'\x1b[1mCommand:\x1b[0m\n{self.command}\n\n'
         if self.start_time is not None:
-            result += f'Start time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.start_time))}\n'
+            result += f'\x1b[1mStart time:\x1b[0m {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.start_time))}\n'
         if self.end_time is not None:
-            result += f'End time: {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.end_time))}\n'
+            result += f'\x1b[1mEnd time:\x1b[0m {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.end_time))}\n'
         if self.exit_code is not None:
-            result += f'Exit code: {self.exit_code}\n'
+            result += f'\x1b[1mExit code:\x1b[0m \x1b[{32 if self.exit_code == 0 else 31}m{self.exit_code}\x1b[0m\n'
         return result
 
 
@@ -275,7 +275,16 @@ class Master(http.server.BaseHTTPRequestHandler):
         """Update the lazython according to the commands."""
         Master.tab.clear_lines()
         for command in Master.commands:
-            text = command.command
+            if command.is_running():
+                command_color = '\x1b[33m'
+            elif command.is_ran():
+                if command.exit_code != 0:
+                    command_color = '\x1b[31m'
+                else:
+                    command_color = '\x1b[32m'
+            else:
+                command_color = ''
+            text = command_color + command.command
             details = command.get_details()
             stdout = command.stdout if command.stdout is not None else ''
             stderr = command.stderr if command.stderr is not None else ''

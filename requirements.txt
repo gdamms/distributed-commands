@@ -1,1 +1,1 @@
-lazython @ git+https://github.com/gdamms/lazython.git@cad490c8c0b45c4e467c5f4d3d465be6026024b7
+lazython @ git+https://github.com/gdamms/lazython.git
