@@ -77,8 +77,24 @@ class Command:
         result = ''
         result += f'\x1b[1mID:\x1b[0m {self.id}\n'
         result += f'\x1b[1mCommand:\x1b[0m\n{self.command}\n\n'
+        if self.is_running():
+            status = '\x1b[33mRunning 🏃\x1b[0m'
+        elif self.is_ran():
+            if self.exit_code != 0:
+                status = '\x1b[31mFailed ❌\x1b[0m'
+            else:
+                status = '\x1b[32mSuccess ✔\x1b[0m'
+        else:
+            status = '\x1b[34mPending ⏱\x1b[0m'
+        result += f'\x1b[1mStatus:\x1b[0m {status}\n'
         if self.start_time is not None:
             result += f'\x1b[1mStart time:\x1b[0m {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.start_time))}\n'
+            end_time = self.end_time if self.end_time else time.time()
+            elapsed_time = end_time - self.start_time
+            s = int(elapsed_time % 60)
+            m = int((elapsed_time // 60) % 60)
+            h = int(elapsed_time // 3600)
+            result += f'\x1b[1mElapsed time:\x1b[0m {h:02d}:{m:02d}:{s:02d}\n'
         if self.end_time is not None:
             result += f'\x1b[1mEnd time:\x1b[0m {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.end_time))}\n'
         if self.exit_code is not None:
