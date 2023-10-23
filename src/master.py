@@ -108,6 +108,8 @@ class Master(http.server.BaseHTTPRequestHandler):
 
     commands: list[Command] = []
     running: bool = False
+    lazython: Lazython = None
+    to_call: list[callable] = []
 
     def do_GET(self: 'Master') -> None:
         """Handle a GET request."""
@@ -178,45 +180,55 @@ class Master(http.server.BaseHTTPRequestHandler):
         )
         Master.lazython.add_key(ord('a'), lambda: Master.request_command())
         Master.lazython.add_key(ord('A'), lambda: Master.request_file())
+        Master.lazython.add_key(ord('q'), lambda: Master.stop())
+        Master.lazython.add_key(27, lambda: Master.stop())  # `esc`
+        Master.lazython.add_key(0, lambda: Master.stop())  # `ctrl`+`c`
 
-        threading.Thread(target=lambda: Master.serve(address=address, port=port)).start()
-        Master.lazython.start()
-        Master.stop()
+        threading.Thread(target=Master.serve, args=(address, port)).start()
+        Master.main()
+
+    @staticmethod
+    def main() -> None:
+        """Main function to run a master."""
+        while Master.running:
+            Master.lazython.start()
+            while Master.to_call:
+                Master.to_call.pop(0)()
 
     @staticmethod
     def stop() -> None:
         """Stop the master."""
         Master.running = False
+        try:
+            Master.lazython.stop()
+        except:
+            pass
 
     @staticmethod
     def request_command() -> None:
         """Request a command to run."""
-        Master.lazython.stop()
 
-        # Choose a command to run.
-        sys.stdout.write('Command: ')
-        try:
+        def f():
+            # Choose a command to run.
+            sys.stdout.write('Command: ')
             command = input()
             Master.add_command(command)
-        except KeyboardInterrupt:
-            pass
 
-        Master.lazython.start()
+        Master.to_call.append(f)
+        Master.lazython.stop()
 
     @staticmethod
     def request_file() -> None:
         """Request a file to add commands from."""
-        Master.lazython.stop()
 
-        # Choose a file to add commands from.
-        sys.stdout.write('File: ')
-        try:
+        def f():
+            # Choose a file to add commands from.
+            sys.stdout.write('File: ')
             path = input()
             Master.add_commands_from_file(path)
-        except KeyboardInterrupt:
-            pass
 
-        Master.lazython.start()
+        Master.to_call.append(f)
+        Master.lazython.stop()
 
     @staticmethod
     def add_command(command: str | Command) -> None:
@@ -283,7 +295,7 @@ class Master(http.server.BaseHTTPRequestHandler):
                 else:
                     command_color = '\x1b[32m'
             else:
-                command_color = ''
+                command_color = '\x1b[34m'
             text = command_color + command.command
             details = command.get_details()
             stdout = command.stdout if command.stdout is not None else ''
