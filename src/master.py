@@ -253,7 +253,9 @@ class Master(http.server.BaseHTTPRequestHandler):
         """
         with open(path, 'r') as file:
             for line in file.readlines():
-                Master.add_command(line[:-1])
+                if line[-1] == '\n':
+                    line = line[:-1]
+                Master.add_command(line)
         Master.update_lazython()
 
     @staticmethod
