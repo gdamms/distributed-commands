@@ -1,102 +1,12 @@
 import http.server
-import json
 import threading
 import time
 import sys
+import json
 
 from lazython import Lazython
 
-
-class Command:
-    """A command to run on a slave.
-
-    Attributes:
-        ID (int): The ID of the next command.
-    """
-    ID: int = 0
-
-    def __init__(self: 'Command', command: str) -> None:
-        """Constructor.
-
-        Args:
-            command (str): The command to run.
-        """
-        self.command: str = command
-        self.exit_code: int = None
-        self.stdout: str = None
-        self.stderr: str = None
-        self.start_time: float = None
-        self.end_time: float = None
-        self.id: int = Command.ID
-        Command.ID += 1
-
-    def is_running(self: 'Command') -> bool:
-        """Whether the command is running.
-
-        Returns:
-            bool: Whether the command is running.
-        """
-        return self.start_time is not None and self.end_time is None
-
-    def is_ran(self: 'Command') -> bool:
-        """Whether the command has been runned.
-
-        Returns:
-            bool: Whether the command has been runned.
-        """
-        return self.end_time is not None
-
-    def is_choosable(self: 'Command') -> bool:
-        """Whether the command is chosable.
-
-        Returns:
-            bool: Whether the command is chosable.
-        """
-        return not self.is_running() and not self.is_ran()
-
-    def start(self: 'Command') -> None:
-        """Start the command."""
-        self.start_time = time.time()
-        Master.update_lazython()
-
-    def stop(self: 'Command', exit_code: int, stdout: str, stderr: str) -> None:
-        """Stop the command.
-
-        Args:
-            exit_code (int): The exit code of the command.
-            stdout (str): The stdout of the command.
-            stderr (str): The stderr of the command.
-        """
-        self.end_time = time.time()
-        self.exit_code = exit_code
-        self.stdout = stdout
-        self.stderr = stderr
-        Master.update_lazython()
-
-    def __str__(self: 'Command') -> str:
-        """Get a string representation of the command.
-
-        Returns:
-            str: A string representation of the command.
-        """
-        return f'{self.command}'
-
-    def get_details(self: 'Command') -> str:
-        """Get a string representation of the command details.
-
-        Returns:
-            str: A string representation of the command details.
-        """
-        result = ''
-        result += f'\x1b[1mID:\x1b[0m {self.id}\n'
-        result += f'\x1b[1mCommand:\x1b[0m\n{self.command}\n\n'
-        if self.start_time is not None:
-            result += f'\x1b[1mStart time:\x1b[0m {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.start_time))}\n'
-        if self.end_time is not None:
-            result += f'\x1b[1mEnd time:\x1b[0m {time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(self.end_time))}\n'
-        if self.exit_code is not None:
-            result += f'\x1b[1mExit code:\x1b[0m \x1b[{32 if self.exit_code == 0 else 31}m{self.exit_code}\x1b[0m\n'
-        return result
+from .command import Command
 
 
 class Master(http.server.BaseHTTPRequestHandler):
@@ -123,41 +33,37 @@ class Master(http.server.BaseHTTPRequestHandler):
             return
 
         # Send the command to run.
-        response = {
-            'id': command.id,
-            'command': command.command,
-        }
+        data = command.serialize()
         self.send_response(200)
         self.end_headers()
-        self.wfile.write(json.dumps(response).encode())
+        self.wfile.write(data.encode())
+
+        # Update the lazython.
+        Master.update_lazython()
 
     def do_POST(self: 'Master') -> None:
         """Handle a POST request."""
 
         # Read the data.
         content_length = int(self.headers['Content-Length'])
-        post_data = self.rfile.read(content_length)
+        data = self.rfile.read(content_length)
 
         # Send a 204 response.
         self.send_response(204)
         self.end_headers()
 
         # Decode the data.
-        post_data = post_data.decode()
-        post_data = json.loads(post_data)
+        data = json.loads(data)
+        command = Command.deserialize(data)
 
-        command_id = post_data['id']
-        exit_code = post_data['exit_code']
-        stdout = post_data['stdout']
-        stderr = post_data['stderr']
+        # Update the command.
+        for i, c in enumerate(Master.commands):
+            if c.id == command.id:
+                Master.commands[i] = command
+                break
 
-        # Stop the command.
-        command = [command for command in Master.commands if command.id == command_id][0]
-        command.stop(
-            exit_code=exit_code,
-            stdout=stdout,
-            stderr=stderr,
-        )
+        # Update the lazython.
+        Master.update_lazython()
 
     def log_message(self, format, *args) -> None:
         """Log a message. This is a dummy method to avoid logging."""
@@ -240,7 +146,7 @@ class Master(http.server.BaseHTTPRequestHandler):
         if isinstance(command, str):
             if command == '' or command.isspace():
                 return
-            command = Command(command)
+            command = Command(command=command)
         Master.commands.append(command)
         Master.update_lazython()
 
@@ -267,7 +173,7 @@ class Master(http.server.BaseHTTPRequestHandler):
         """
         for command in Master.commands:
             if command.is_choosable():
-                command.start()
+                command.start_time = time.time()
                 return command
         return None
 

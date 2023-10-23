@@ -1,10 +1,35 @@
 import requests
 import subprocess
 import time
+import threading
+import select
+
+from .command import Command
 
 
 REQUEST_DELAY = 0.3
 NB_PENDING_DOTS = 4
+
+
+def sender(address: str, port: int, command: Command) -> None:
+    """Send a command to the master.
+
+    Args:
+        address (str): The address of the master.
+        port (int): The port of the master.
+        command (Command): The command to send.
+    """
+    while command.is_running():
+        data = command.serialize()
+        try:
+            request = requests.post(f'http://{address}:{port}', json=data)
+        except requests.exceptions.ConnectionError:
+            raise RuntimeError(f'Cannot reach {address}:{port}.')
+
+        if request.status_code != 204:
+            raise RuntimeError(f'Failed to send command: {request.text}')
+
+        time.sleep(REQUEST_DELAY)
 
 
 def main(address: str, port: int):
@@ -70,25 +95,41 @@ def main(address: str, port: int):
         no_command_found = False
 
         # Parse the response.
-        response = request.json()
-        command = response['command']
-        command_id = response['id']
+        data = request.content.decode()
+        command = Command.deserialize(data)
 
         # Run the command.
-        print(f'Running command `{command}`')
-        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = process.communicate()
-        exit_code = process.returncode
+        print(f'Running command `{command.command}`')
+        process = subprocess.Popen(command.command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-        # Send the result.
-        result = {
-            'id': command_id,
-            'exit_code': exit_code,
-            'stdout': stdout.decode(),
-            'stderr': stderr.decode(),
-        }
+        # Send updates.
+        command_thread = threading.Thread(target=sender, args=(address, port, command))
+        command_thread.start()
+
+        # Read stdout and stderr to update the command in real time.
+        while process.poll() is None:
+            ready, _, _ = select.select([process.stdout, process.stderr], [], [], 0.1)
+            for stream in ready:
+                line = stream.readline()
+                if line:
+                    if stream == process.stdout:
+                        if command.stdout is None:
+                            command.stdout = ''
+                        command.stdout += line.decode()
+                    else:
+                        if command.stderr is None:
+                            command.stderr = ''
+                        command.stderr += line.decode()
+
+        # Update the command.
+        command.exit_code = process.returncode
+        command.end_time = time.time()
+        command_thread.join()
+
+        # Send the final result.
+        data = command.serialize()
         try:
-            request = requests.post(url, json=result)
+            request = requests.post(url, json=data)
         except requests.exceptions.ConnectionError:
             raise RuntimeError(f'Cannot reach {url}.')
 
