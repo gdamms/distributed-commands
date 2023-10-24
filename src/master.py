@@ -165,11 +165,14 @@ class Master(http.server.BaseHTTPRequestHandler):
         Args:
             path (str): The path to the file.
         """
-        with open(path, 'r') as file:
-            for line in file.readlines():
-                if line[-1] == '\n':
-                    line = line[:-1]
-                Master.add_command(line)
+        try:
+            with open(path, 'r') as file:
+                for line in file.readlines():
+                    if line[-1] == '\n':
+                        line = line[:-1]
+                    Master.add_command(line)
+        except FileNotFoundError:
+            return
         Master.update_lazython()
 
     @staticmethod
