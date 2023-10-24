@@ -4,7 +4,7 @@ import time
 import sys
 import json
 
-from lazython import Lazython
+from lazython import Lazython, renderer
 
 from .command import Command
 
@@ -89,6 +89,8 @@ class Master(http.server.BaseHTTPRequestHandler):
         Master.lazython.add_key(ord('q'), lambda: Master.stop())
         Master.lazython.add_key(27, lambda: Master.stop())  # `esc`
         Master.lazython.add_key(0, lambda: Master.stop())  # `ctrl`+`c`
+        Master.lazython.add_key(4741915, lambda: Master.tab.scroll_up(-1))  # `home`
+        Master.lazython.add_key(4610843, lambda: Master.tab.scroll_down(-1))  # `end`
 
         threading.Thread(target=Master.serve, args=(address, port)).start()
         Master.main()
@@ -193,6 +195,15 @@ class Master(http.server.BaseHTTPRequestHandler):
     @staticmethod
     def update_lazython() -> None:
         """Update the lazython according to the commands."""
+        # Check if need to auto scroll.
+        tab_subtext = Master.tab.get_selected_subtext()
+        tab_scroll = Master.tab.get_content_scroll()
+        tab_height = Master.tab.get_content_height()
+        tab_width = Master.tab.get_content_width()
+        subtext_height = renderer.Renderer.get_size(tab_subtext, tab_width)[1]
+        max_scroll = max(0, subtext_height - tab_height)
+        auto_scroll = tab_scroll >= max_scroll
+
         Master.tab.clear_lines()
         for command in Master.commands:
             if command.is_running():
@@ -209,6 +220,16 @@ class Master(http.server.BaseHTTPRequestHandler):
             stdout = command.stdout if command.stdout is not None else ''
             stderr = command.stderr if command.stderr is not None else ''
             Master.tab.add_line(text=text, subtexts=[details, stdout, stderr])
+
+        if auto_scroll:
+            # Auto scroll.
+            tab_subtext = Master.tab.get_selected_subtext()
+            tab_scroll = Master.tab.get_content_scroll()
+            tab_height = Master.tab.get_content_height()
+            tab_width = Master.tab.get_content_width()
+            subtext_height = renderer.Renderer.get_size(tab_subtext, tab_width)[1]
+            max_scroll = max(0, subtext_height - tab_height)
+            Master.tab.scroll_down(max_scroll - tab_scroll)
 
 
 def main(address: str, port: int):
