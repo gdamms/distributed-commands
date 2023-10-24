@@ -1,6 +1,8 @@
 import time
 import json
 
+from lazython.line import Line
+
 
 class Command:
     """A command to run on a slave.
@@ -31,6 +33,7 @@ class Command:
         self.stderr: str = stderr
         self.start_time: float = start_time
         self.end_time: float = end_time
+        self.line: 'Line | None' = None
         self.id: int = id
         if self.id is None:
             self.id = Command.ID

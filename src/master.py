@@ -4,7 +4,7 @@ import time
 import sys
 import json
 
-from lazython import Lazython, renderer
+from lazython import Lazython
 
 from .command import Command
 
@@ -59,7 +59,13 @@ class Master(http.server.BaseHTTPRequestHandler):
         # Update the command.
         for i, c in enumerate(Master.commands):
             if c.id == command.id:
-                Master.commands[i] = command
+                cur_command = Master.commands[i]
+                cur_command.command = command.command
+                cur_command.exit_code = command.exit_code
+                cur_command.stdout = command.stdout
+                cur_command.stderr = command.stderr
+                cur_command.start_time = command.start_time
+                cur_command.end_time = command.end_time
                 break
 
         # Update the lazython.
@@ -195,17 +201,8 @@ class Master(http.server.BaseHTTPRequestHandler):
     @staticmethod
     def update_lazython() -> None:
         """Update the lazython according to the commands."""
-        # Check if need to auto scroll.
-        tab_subtext = Master.tab.get_selected_subtext()
-        tab_scroll = Master.tab.get_content_scroll()
-        tab_height = Master.tab.get_content_height()
-        tab_width = Master.tab.get_content_width()
-        subtext_height = renderer.Renderer.get_size(tab_subtext, tab_width)[1]
-        max_scroll = max(0, subtext_height - tab_height)
-        auto_scroll = tab_scroll >= max_scroll
-
-        Master.tab.clear_lines()
         for command in Master.commands:
+            # Get command color.
             if command.is_running():
                 command_color = '\x1b[33m'
             elif command.is_ran():
@@ -215,21 +212,23 @@ class Master(http.server.BaseHTTPRequestHandler):
                     command_color = '\x1b[32m'
             else:
                 command_color = '\x1b[34m'
+
+            # Update the command line.
             text = command_color + command.command
             details = command.get_details()
             stdout = command.stdout if command.stdout is not None else ''
             stderr = command.stderr if command.stderr is not None else ''
-            Master.tab.add_line(text=text, subtexts=[details, stdout, stderr])
 
-        if auto_scroll:
-            # Auto scroll.
-            tab_subtext = Master.tab.get_selected_subtext()
-            tab_scroll = Master.tab.get_content_scroll()
-            tab_height = Master.tab.get_content_height()
-            tab_width = Master.tab.get_content_width()
-            subtext_height = renderer.Renderer.get_size(tab_subtext, tab_width)[1]
-            max_scroll = max(0, subtext_height - tab_height)
-            Master.tab.scroll_down(max_scroll - tab_scroll)
+            if command.line is None:
+                line = Master.tab.add_line(
+                    text=text,
+                    subtexts=[details, stdout, stderr],
+                )
+                command.line = line
+            else:
+                line = command.line
+                line.set_text(text)
+                line.set_subtexts([details, stdout, stderr])
 
 
 def main(address: str, port: int):
