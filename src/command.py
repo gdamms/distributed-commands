@@ -17,8 +17,8 @@ class Command:
             id: int = None,
             command: str = '',
             exit_code: int = None,
-            stdout: str = None,
-            stderr: str = None,
+            stdout: str = '',
+            stderr: str = '',
             start_time: float = None,
             end_time: float = None,
     ) -> None:

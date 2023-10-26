@@ -19,6 +19,7 @@ You might want to use the `--address 0.0.0.0` argument to listen on all interfac
 The `slave` command starts a slave, which is responsible for executing tasks.
 The slave will use the `address` and `port` arguments to connect to the master.
 """)
+    parser.set_defaults(run=lambda args: parser.print_help())
 
     parser.add_argument(
         '--address',

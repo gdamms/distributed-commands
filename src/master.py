@@ -90,13 +90,24 @@ class Master(http.server.BaseHTTPRequestHandler):
             name='Commands',
             subtabs=['Info', 'Stdout', 'Stderr'],
         )
-        Master.lazython.add_key(ord('a'), lambda: Master.request_command())
-        Master.lazython.add_key(ord('A'), lambda: Master.request_file())
-        Master.lazython.add_key(ord('q'), lambda: Master.stop())
-        Master.lazython.add_key(27, lambda: Master.stop())  # `esc`
-        Master.lazython.add_key(0, lambda: Master.stop())  # `ctrl`+`c`
-        Master.lazython.add_key(4741915, lambda: Master.tab.scroll_up(-1))  # `home`
-        Master.lazython.add_key(4610843, lambda: Master.tab.scroll_down(-1))  # `end`
+        Master.lazython.add_key(key=ord('a'),
+                                callback=lambda: Master.request_command(),
+                                name='a',
+                                help='Add a command')
+        Master.lazython.add_key(key=ord('A'),
+                                callback=lambda: Master.request_file(),
+                                name='A',
+                                help='Add commands from a file')
+        Master.lazython.add_key(key=ord('q'),
+                                callback=lambda: Master.stop())
+        Master.lazython.add_key(key=27,  # `esc`
+                                callback=lambda: Master.stop())
+        Master.lazython.add_key(key=0,  # `ctrl`+`c`
+                                callback=lambda: Master.stop())
+        Master.lazython.add_key(key=4741915,  # `home`
+                                callback=lambda: Master.tab.scroll_up(-1))
+        Master.lazython.add_key(key=4610843,  # `end`
+                                callback=lambda: Master.tab.scroll_down(-1))
 
         threading.Thread(target=Master.serve, args=(address, port)).start()
         Master.main()
@@ -219,8 +230,8 @@ class Master(http.server.BaseHTTPRequestHandler):
             # Update the command line.
             text = command_color + command.command
             details = command.get_details()
-            stdout = command.stdout if command.stdout is not None else ''
-            stderr = command.stderr if command.stderr is not None else ''
+            stdout = command.stdout
+            stderr = command.stderr
 
             if command.line is None:
                 line = Master.tab.add_line(

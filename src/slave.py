@@ -113,12 +113,8 @@ def main(address: str, port: int):
                 line = stream.readline()
                 if line:
                     if stream == process.stdout:
-                        if command.stdout is None:
-                            command.stdout = ''
                         command.stdout += line.decode()
                     else:
-                        if command.stderr is None:
-                            command.stderr = ''
                         command.stderr += line.decode()
 
         # Update the command.
