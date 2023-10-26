@@ -14,7 +14,7 @@ class Command:
 
     def __init__(
             self: 'Command',
-            id: int = None,
+            id: int = -1,
             command: str = '',
             exit_code: int = None,
             stdout: str = '',
@@ -35,7 +35,7 @@ class Command:
         self.end_time: float = end_time
         self.line: 'Line | None' = None
         self.id: int = id
-        if self.id is None:
+        if self.id < 0:
             self.id = Command.ID
             Command.ID += 1
 

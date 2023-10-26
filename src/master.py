@@ -98,6 +98,14 @@ class Master(http.server.BaseHTTPRequestHandler):
                                 callback=lambda: Master.request_file(),
                                 name='A',
                                 help='Add commands from a file')
+        Master.lazython.add_key(key=ord('d'),
+                                callback=lambda: Master.delete_command(),
+                                name='d',
+                                help='Delete a command')
+        Master.lazython.add_key(key=ord('r'),
+                                callback=lambda: Master.restart_command(),
+                                name='r',
+                                help='Restart a command')
         Master.lazython.add_key(key=ord('q'),
                                 callback=lambda: Master.stop())
         Master.lazython.add_key(key=27,  # `esc`
@@ -243,6 +251,31 @@ class Master(http.server.BaseHTTPRequestHandler):
                 line = command.line
                 line.set_text(text)
                 line.set_subtexts([details, stdout, stderr])
+
+    @staticmethod
+    def delete_command() -> None:
+        """Delete a command."""
+        line = Master.tab.get_selected_line()
+        command = [command for command in Master.commands if command.line == line][0]
+        if command.is_running():
+            return
+        Master.tab.delete_line(line)
+        Master.commands.remove(command)
+        Master.update_lazython()
+
+    @staticmethod
+    def restart_command() -> None:
+        """Restart a command."""
+        line = Master.tab.get_selected_line()
+        command = [command for command in Master.commands if command.line == line][0]
+        if not command.is_ran():
+            return
+        command.exit_code = None
+        command.stdout = ''
+        command.stderr = ''
+        command.start_time = None
+        command.end_time = None
+        Master.update_lazython()
 
 
 def main(address: str, port: int):
