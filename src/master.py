@@ -50,17 +50,15 @@ class Master(http.server.BaseHTTPRequestHandler):
         content_length = int(self.headers['Content-Length'])
         data = self.rfile.read(content_length)
 
-        # Send a 204 response.
-        self.send_response(204)
-        self.end_headers()
-
         # Decode the data.
         data = json.loads(data)
         command = Command.deserialize(data)
 
         # Update the command.
+        found = False
         for i, c in enumerate(Master.commands):
             if c.id == command.id:
+                found = True
                 cur_command = Master.commands[i]
                 cur_command.command = command.command
                 cur_command.exit_code = command.exit_code
@@ -70,13 +68,24 @@ class Master(http.server.BaseHTTPRequestHandler):
                 cur_command.end_time = command.end_time
                 break
 
-        # Update the lazython.
-        Master.update_lazython()
-        Master.save()
-        with open(os.path.join(STDOUT_DIR, f'{command.id}.txt'), 'w') as file:
-            file.write(command.stdout)
-        with open(os.path.join(STDERR_DIR, f'{command.id}.txt'), 'w') as file:
-            file.write(command.stderr)
+        if found:
+            # Send a 204 response.
+            self.send_response(204)
+            self.end_headers()
+
+            # Update the lazython.
+            Master.update_lazython()
+            Master.save()
+            with open(os.path.join(STDOUT_DIR, f'{command.id}.txt'), 'w') as file:
+                file.write(command.stdout)
+            with open(os.path.join(STDERR_DIR, f'{command.id}.txt'), 'w') as file:
+                file.write(command.stderr)
+
+        else:
+            # Send a 404 response.
+            self.send_response(404)
+            self.end_headers()
+            self.wfile.write(b'This command does not exist anymore.')
 
     def log_message(self, format, *args) -> None:
         """Log a message. This is a dummy method to avoid logging."""
@@ -306,6 +315,8 @@ class Master(http.server.BaseHTTPRequestHandler):
         command = [command for command in Master.commands if command.line == line][0]
         if not force and not command.is_ran():
             return
+        command.id = Command.ID
+        Command.ID += 1
         command.exit_code = None
         command.stdout = ''
         command.stderr = ''
@@ -352,6 +363,15 @@ class Master(http.server.BaseHTTPRequestHandler):
                     command.stderr = file.read()
             except FileNotFoundError:
                 pass
+
+    @staticmethod
+    def clear(all: bool = False) -> None:
+        """Clear the commands.
+
+        Args:
+            all (bool, optional): Whether to clear all the commands. Defaults to False.
+        """
+        pass
 
 
 def main(address: str, port: int):

@@ -9,12 +9,13 @@ from .command import Command
 from .vars import *
 
 
-def sender(url: str, command: Command) -> None:
+def sender(url: str, command: Command, process: subprocess.Popen) -> None:
     """Send a command to the master.
 
     Args:
         url (str): The URL of the master.
         command (Command): The command to send.
+        process (subprocess.Popen): The process to send updates from.
     """
     while command.is_running():
         data = command.serialize()
@@ -25,10 +26,16 @@ def sender(url: str, command: Command) -> None:
             time.sleep(REQUEST_DELAY)
             continue
 
-        if request.status_code != 204:
-            raise RuntimeError(f'Failed to send command: {request.text}')
+        if request.status_code == 204:
+            time.sleep(REQUEST_DELAY)
+            continue
 
-        time.sleep(REQUEST_DELAY)
+        # If the master does not return a 204 status code, stop the command.
+        process.kill()
+        sys.stdout.write(f'\n\n')
+        sys.stdout.write(f'Failed to send updates: {request.text}\n')
+        sys.stdout.flush()
+        return
 
     # Send the final result.
     data = command.serialize()
@@ -57,6 +64,13 @@ def sender(url: str, command: Command) -> None:
             # Keep trying.
             time.sleep(REQUEST_DELAY)
             continue
+
+    if request.status_code == 204:
+        return
+
+    sys.stdout.write(f'\n\n')
+    sys.stdout.write(f'Failed to send the final result: {request.text}\n')
+    sys.stdout.flush()
 
 
 def read_output(process: subprocess.Popen, command: Command) -> None:
@@ -150,7 +164,7 @@ def main(address: str, port: int):
                                    stderr=subprocess.PIPE, preexec_fn=lambda: os.setpgrp())
 
         # Send updates.
-        command_thread = threading.Thread(target=sender, args=(url, command))
+        command_thread = threading.Thread(target=sender, args=(url, command, process))
         command_thread.start()
 
         # Read the output.
@@ -205,16 +219,6 @@ def main(address: str, port: int):
         command_thread.join()
         reader_thread.join()
         process.wait()
-
-        # Send the final result.
-        data = command.serialize()
-        try:
-            request = requests.post(url, json=data)
-        except requests.exceptions.ConnectionError:
-            raise RuntimeError(f'Cannot reach {url}.')
-
-        if request.status_code != 204:
-            raise RuntimeError(f'Failed to send result: {request.text}')
 
 
 if __name__ == '__main__':
