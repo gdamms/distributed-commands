@@ -109,10 +109,18 @@ class Master(http.server.BaseHTTPRequestHandler):
                                 callback=lambda: Master.delete_command(),
                                 name='d',
                                 help='Delete a command')
+        Master.lazython.add_key(key=ord('D'),
+                                callback=lambda: Master.delete_command(force=True),
+                                name='D',
+                                help='Delete a command (force)')
         Master.lazython.add_key(key=ord('r'),
                                 callback=lambda: Master.restart_command(),
                                 name='r',
                                 help='Restart a command')
+        Master.lazython.add_key(key=ord('R'),
+                                callback=lambda: Master.restart_command(force=True),
+                                name='R',
+                                help='Restart a command (force)')
         Master.lazython.add_key(key=ord('q'),
                                 callback=lambda: Master.stop())
         Master.lazython.add_key(key=27,  # `esc`
@@ -270,11 +278,15 @@ class Master(http.server.BaseHTTPRequestHandler):
                 line.set_subtexts([details, stdout, stderr])
 
     @staticmethod
-    def delete_command() -> None:
-        """Delete a command."""
+    def delete_command(force: bool = False) -> None:
+        """Delete a command.
+
+        Args:
+            force (bool, optional): Whether to force the deletion. Defaults to False.
+        """
         line = Master.tab.get_selected_line()
         command = [command for command in Master.commands if command.line == line][0]
-        if command.is_running():
+        if not force and command.is_running():
             return
         Master.tab.delete_line(line)
         Master.commands.remove(command)
@@ -284,11 +296,15 @@ class Master(http.server.BaseHTTPRequestHandler):
         os.remove(os.path.join(STDERR_DIR, f'{command.id}.txt'))
 
     @staticmethod
-    def restart_command() -> None:
-        """Restart a command."""
+    def restart_command(force: bool = False) -> None:
+        """Restart a command.
+
+        Args:
+            force (bool, optional): Whether to force the restart. Defaults to False.
+        """
         line = Master.tab.get_selected_line()
         command = [command for command in Master.commands if command.line == line][0]
-        if not command.is_ran():
+        if not force and not command.is_ran():
             return
         command.exit_code = None
         command.stdout = ''

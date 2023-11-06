@@ -9,25 +9,54 @@ from .command import Command
 from .vars import *
 
 
-def sender(address: str, port: int, command: Command) -> None:
+def sender(url: str, command: Command) -> None:
     """Send a command to the master.
 
     Args:
-        address (str): The address of the master.
-        port (int): The port of the master.
+        url (str): The URL of the master.
         command (Command): The command to send.
     """
     while command.is_running():
         data = command.serialize()
         try:
-            request = requests.post(f'http://{address}:{port}', json=data)
+            request = requests.post(url, json=data)
         except requests.exceptions.ConnectionError:
-            raise RuntimeError(f'Cannot reach {address}:{port}.')
+            # Ignore connection errors.
+            time.sleep(REQUEST_DELAY)
+            continue
 
         if request.status_code != 204:
             raise RuntimeError(f'Failed to send command: {request.text}')
 
         time.sleep(REQUEST_DELAY)
+
+    # Send the final result.
+    data = command.serialize()
+    sent = False
+    connection_failed = False
+    loop_count = 0
+    while not sent:
+        try:
+            request = requests.post(url, json=data)
+            sent = True
+        except requests.exceptions.ConnectionError:
+            if not connection_failed:
+                sys.stdout.write(f'\n\n')
+                sys.stdout.write(f'Cannot reach {url} to send the final result.\n')
+                sys.stdout.write(f'Make sure a master is running on the targeted address with the correct port.\n')
+                sys.stdout.write(f'Keep in mind that the master address must be reachable from here.\n')
+
+                connection_failed = True
+
+            nb_dots = loop_count % NB_PENDING_DOTS + 1
+            loop_count += 1
+            dots = nb_dots * '.' + (NB_PENDING_DOTS - nb_dots) * ' '
+            sys.stdout.write(f'\rRetrying{dots}')
+            sys.stdout.flush()
+
+            # Keep trying.
+            time.sleep(REQUEST_DELAY)
+            continue
 
 
 def read_output(process: subprocess.Popen, command: Command) -> None:
@@ -121,7 +150,7 @@ def main(address: str, port: int):
                                    stderr=subprocess.PIPE, preexec_fn=lambda: os.setpgrp())
 
         # Send updates.
-        command_thread = threading.Thread(target=sender, args=(address, port, command))
+        command_thread = threading.Thread(target=sender, args=(url, command))
         command_thread.start()
 
         # Read the output.
@@ -171,7 +200,11 @@ def main(address: str, port: int):
         # Update the command.
         command.exit_code = process.returncode
         command.end_time = time.time()
+
+        # Make sure the threads are done.
         command_thread.join()
+        reader_thread.join()
+        process.wait()
 
         # Send the final result.
         data = command.serialize()
