@@ -7,6 +7,7 @@ import json
 from lazython import Lazython
 
 from .command import Command
+from .vars import *
 
 
 class Master(http.server.BaseHTTPRequestHandler):
@@ -40,6 +41,7 @@ class Master(http.server.BaseHTTPRequestHandler):
 
         # Update the lazython.
         Master.update_lazython()
+        Master.save()
 
     def do_POST(self: 'Master') -> None:
         """Handle a POST request."""
@@ -70,6 +72,11 @@ class Master(http.server.BaseHTTPRequestHandler):
 
         # Update the lazython.
         Master.update_lazython()
+        Master.save()
+        with open(os.path.join(STDOUT_DIR, f'{command.id}.txt'), 'w') as file:
+            file.write(command.stdout)
+        with open(os.path.join(STDERR_DIR, f'{command.id}.txt'), 'w') as file:
+            file.write(command.stderr)
 
     def log_message(self, format, *args) -> None:
         """Log a message. This is a dummy method to avoid logging."""
@@ -118,6 +125,10 @@ class Master(http.server.BaseHTTPRequestHandler):
                                 callback=lambda: Master.tab.scroll_down(-1))
 
         threading.Thread(target=Master.serve, args=(address, port)).start()
+
+        Master.load()
+        Master.update_lazython()
+
         Master.main()
 
     @staticmethod
@@ -136,6 +147,7 @@ class Master(http.server.BaseHTTPRequestHandler):
             Master.lazython.stop()
         except:
             pass
+        Master.save()
 
     @staticmethod
     def request_command() -> None:
@@ -176,6 +188,11 @@ class Master(http.server.BaseHTTPRequestHandler):
             command = Command(command=command)
         Master.commands.append(command)
         Master.update_lazython()
+        Master.save()
+        with open(os.path.join(STDOUT_DIR, f'{command.id}.txt'), 'w') as file:
+            file.write(command.stdout)
+        with open(os.path.join(STDERR_DIR, f'{command.id}.txt'), 'w') as file:
+            file.write(command.stderr)
 
     @staticmethod
     def add_commands_from_file(path: str) -> None:
@@ -262,6 +279,9 @@ class Master(http.server.BaseHTTPRequestHandler):
         Master.tab.delete_line(line)
         Master.commands.remove(command)
         Master.update_lazython()
+        Master.save()
+        os.remove(os.path.join(STDOUT_DIR, f'{command.id}.txt'))
+        os.remove(os.path.join(STDERR_DIR, f'{command.id}.txt'))
 
     @staticmethod
     def restart_command() -> None:
@@ -276,6 +296,46 @@ class Master(http.server.BaseHTTPRequestHandler):
         command.start_time = None
         command.end_time = None
         Master.update_lazython()
+        Master.save()
+        with open(os.path.join(STDOUT_DIR, f'{command.id}.txt'), 'w') as file:
+            file.write(command.stdout)
+        with open(os.path.join(STDERR_DIR, f'{command.id}.txt'), 'w') as file:
+            file.write(command.stderr)
+
+    @staticmethod
+    def save() -> None:
+        """Save the commands."""
+        data = [command.serialize(no_std=True) for command in Master.commands]
+        with open(COMMANDS_FILE, 'w') as file:
+            json.dump(data, file)
+
+    @staticmethod
+    def load() -> None:
+        """Load the commands."""
+        # Load the commands.
+        try:
+            with open(COMMANDS_FILE, 'r') as file:
+                data = json.load(file)
+        except FileNotFoundError:
+            return
+
+        # Update the id.
+        for d in data:
+            command = Command.deserialize(d)
+            Master.commands.append(command)
+
+        # Load the stdout and stderr.
+        for command in Master.commands:
+            try:
+                with open(os.path.join(STDOUT_DIR, f'{command.id}.txt'), 'r') as file:
+                    command.stdout = file.read()
+            except FileNotFoundError:
+                pass
+            try:
+                with open(os.path.join(STDERR_DIR, f'{command.id}.txt'), 'r') as file:
+                    command.stderr = file.read()
+            except FileNotFoundError:
+                pass
 
 
 def main(address: str, port: int):

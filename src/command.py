@@ -104,21 +104,24 @@ class Command:
             result += f'\x1b[1mExit code:\x1b[0m \x1b[{32 if self.exit_code == 0 else 31}m{self.exit_code}\x1b[0m\n'
         return result
 
-    def serialize(self: 'Command') -> str:
+    def serialize(self: 'Command', no_std: bool = False) -> str:
         """Serialize the command.
+
+        Args:
+            no_std (bool): Whether to serialize the stdout and stderr.
 
         Returns:
             str: The serialized command.
         """
-        data = {
-            'id': self.id,
-            'command': self.command,
-            'exit_code': self.exit_code,
-            'stdout': self.stdout,
-            'stderr': self.stderr,
-            'start_time': self.start_time,
-            'end_time': self.end_time,
-        }
+        data = {}
+        data['id'] = self.id
+        data['command'] = self.command
+        data['exit_code'] = self.exit_code
+        data['start_time'] = self.start_time
+        data['end_time'] = self.end_time
+        if not no_std:
+            data['stdout'] = self.stdout
+            data['stderr'] = self.stderr
         return json.dumps(data)
 
     @staticmethod
@@ -132,12 +135,15 @@ class Command:
             Command: The deserialized command.
         """
         data = json.loads(serialized)
+        id = data['id']
+        if id >= Command.ID:
+            Command.ID = id + 1
         return Command(
             id=data['id'],
             command=data['command'],
             exit_code=data['exit_code'],
-            stdout=data['stdout'],
-            stderr=data['stderr'],
+            stdout=data.get('stdout', ''),
+            stderr=data.get('stderr', ''),
             start_time=data['start_time'],
             end_time=data['end_time'],
         )
