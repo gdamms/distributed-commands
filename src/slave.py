@@ -3,12 +3,10 @@ import subprocess
 import time
 import threading
 import select
+import sys
 
 from .command import Command
-
-
-REQUEST_DELAY = 0.3
-NB_PENDING_DOTS = 4
+from .vars import *
 
 
 def sender(address: str, port: int, command: Command) -> None:
@@ -30,6 +28,24 @@ def sender(address: str, port: int, command: Command) -> None:
             raise RuntimeError(f'Failed to send command: {request.text}')
 
         time.sleep(REQUEST_DELAY)
+
+
+def read_output(process: subprocess.Popen, command: Command) -> None:
+    """Read the output of a process.
+
+    Args:
+        process (subprocess.Popen): The process to read the output from.
+        command (Command): The command to update.
+    """
+    while process.poll() is None and command.is_running():
+        ready, _, _ = select.select([process.stdout, process.stderr], [], [], 0.1)
+        for stream in ready:
+            line = stream.readline()
+            if line:
+                if stream == process.stdout:
+                    command.stdout += line.decode()
+                else:
+                    command.stderr += line.decode()
 
 
 def main(address: str, port: int):
@@ -58,18 +74,18 @@ def main(address: str, port: int):
             request = requests.get(url)
         except requests.exceptions.ConnectionError:
             if not connection_failed:
-                print(
-                    f'\n' +
-                    f'Cannot reach {url}.\n' +
-                    f'Make sure a master is running on the targeted address with port {port}.\n' +
-                    f'Keep in mind that the master address must be reachable from here.\n',
-                )
+                sys.stdout.write(f'\n\n')
+                sys.stdout.write(f'Cannot reach {url}.\n')
+                sys.stdout.write(f'Make sure a master is running on the targeted address with port {port}.\n')
+                sys.stdout.write(f'Keep in mind that the master address must be reachable from here.\n')
+
                 connection_failed = True
                 no_command_found = False
 
             nb_dots = loop_count % NB_PENDING_DOTS + 1
             dots = nb_dots * '.' + (NB_PENDING_DOTS - nb_dots) * ' '
-            print(f'\rRetrying{dots}', end='')
+            sys.stdout.write(f'\rRetrying{dots}')
+            sys.stdout.flush()
 
             time.sleep(REQUEST_DELAY)
             continue
@@ -79,15 +95,14 @@ def main(address: str, port: int):
         # If the master is out of command, wait.
         if request.status_code == 204:
             if not no_command_found:
-                print(
-                    f'\n' +
-                    f'Master is out of command.\n'
-                )
+                sys.stdout.write(f'\n\n')
+                sys.stdout.write(f'Master is out of command.\n')
+
                 no_command_found = True
 
             nb_dots = loop_count % NB_PENDING_DOTS + 1
             dots = nb_dots * '.' + (NB_PENDING_DOTS - nb_dots) * ' '
-            print(f'\rWaiting for orders{dots}', end='')
+            sys.stdout.write(f'\rWaiting for orders{dots}')
 
             time.sleep(REQUEST_DELAY)
             continue
@@ -99,23 +114,59 @@ def main(address: str, port: int):
         command = Command.deserialize(data)
 
         # Run the command.
-        print(f'Running command `{command.command}`')
-        process = subprocess.Popen(command.command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        sys.stdout.write(f'\n\nRunning command `{command.command}`\n')
+        sys.stdout.flush()
+
+        process = subprocess.Popen(command.command, shell=True, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, preexec_fn=lambda: os.setpgrp())
 
         # Send updates.
         command_thread = threading.Thread(target=sender, args=(address, port, command))
         command_thread.start()
 
-        # Read stdout and stderr to update the command in real time.
+        # Read the output.
+        reader_thread = threading.Thread(target=read_output, args=(process, command))
+        reader_thread.start()
+
+        # Wait for the process to end.
         while process.poll() is None:
-            ready, _, _ = select.select([process.stdout, process.stderr], [], [], 0.1)
-            for stream in ready:
-                line = stream.readline()
-                if line:
-                    if stream == process.stdout:
-                        command.stdout += line.decode()
-                    else:
-                        command.stderr += line.decode()
+            try:
+                process.wait()
+            except KeyboardInterrupt:
+                sys.stdout.write('\n\n')
+                sys.stdout.write('You pressed `ctrl` + `c`.\n')
+                sys.stdout.write('Are you sure you want to stop the command?\n')
+                sys.stdout.write('y: Yes, stop the current command and continue the next one.\n')
+                sys.stdout.write('n: No, continue the command.\n')
+                sys.stdout.write('w: Wait, continue the command then stop the slave.\n')
+                sys.stdout.write('s: Stop, stop the command and the slave.\n')
+                sys.stdout.write('Your choice [y/N/w/s]: ')
+                sys.stdout.flush()
+
+                # Wait for the user to choose.
+                choice = input()
+                if choice.lower() == 'y':
+                    process.kill()
+                elif choice.lower() == 'n':
+                    pass
+                elif choice.lower() == 'w':
+                    running = False
+                elif choice.lower() == 's':
+                    process.kill()
+                    running = False
+                else:
+                    # If the user did not choose, continue the command.
+                    pass
+
+        # Read the remaining output.
+        ready, _, _ = select.select([process.stdout, process.stderr], [], [], 0)
+        for stream in ready:
+            line = stream.readline()
+            if line:
+                if stream == process.stdout:
+                    command.stdout += line.decode()
+                else:
+                    command.stderr += line.decode()
 
         # Update the command.
         command.exit_code = process.returncode
